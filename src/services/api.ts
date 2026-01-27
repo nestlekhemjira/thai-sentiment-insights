@@ -5,8 +5,9 @@ import type {
   HealthStatus,
 } from '@/types/sentiment';
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// 🟢 FIX 1: ปรับ Base URL ให้เป็นค่าว่าง ''
+// เพื่อให้ Browser ใช้โดเมนปัจจุบัน (แก้ปัญหา Mixed Content และ CORS)
+const API_BASE_URL = '';
 
 class ApiService {
   private baseUrl: string;
@@ -17,7 +18,8 @@ class ApiService {
 
   // ✅ เช็ค Health
   async checkHealth(): Promise<HealthStatus> {
-    const res = await fetch(`${this.baseUrl}/health`);
+    // 🟢 FIX 2: ใช้ /api/health ให้ตรงกับ Backend (main.py)
+    const res = await fetch(`${this.baseUrl}/api/health`);
     if (!res.ok) throw new Error('Health check failed');
     return res.json();
   }
@@ -29,7 +31,7 @@ class ApiService {
     return res.json();
   }
 
-  // ✅ ตัวยิง API (ใส่ Log กันเหนียวไว้ให้)
+  // ✅ ตัวยิง API (ใส่ Log กันเหนียวไว้ให้เหมือนเดิม)
   async predict(
     request: PredictionRequest
   ): Promise<PredictionResponse> {
