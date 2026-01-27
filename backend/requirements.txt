@@ -2,4 +2,7 @@ fastapi
 uvicorn
 pydantic
 joblib
-scikit-learn
+numpy
+scipy
+threadpoolctl
+scikit-learn==1.8.0
