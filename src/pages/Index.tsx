@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Github, BookOpen, Cpu } from 'lucide-react';
+import { BookOpen, Cpu } from 'lucide-react'; // 🗑️ ลบ Github ออกแล้ว
 import { PredictionForm } from '@/components/PredictionForm';
 import { ResultDisplay } from '@/components/ResultDisplay';
 import { ModelInfoCard } from '@/components/ModelInfoCard';
@@ -52,13 +52,7 @@ const Index = () => {
               >
                 <BookOpen className="h-5 w-5" />
               </a>
-              <a 
-                href="#" 
-                className="p-2 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                title="GitHub"
-              >
-                <Github className="h-5 w-5" />
-              </a>
+              {/* 🗑️ ปุ่ม Github หายไปแล้ว */}
             </div>
           </div>
         </div>

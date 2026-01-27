@@ -9,10 +9,10 @@ interface PredictionFormProps {
 }
 
 const exampleTexts = [
-  'อาหารอร่อยมาก ประทับใจบริการ',
-  'สินค้าคุณภาพไม่ดี ผิดหวังมาก',
-  'ปกติดี ไม่มีอะไรพิเศษ',
-  'ร้านนี้ดีมากครับ แนะนำเลย',
+  'ดีนะ ส้มตำอร่อย',
+  'แนะนำ โคตรจะจึ้ง',
+  'ก็นะ ก็โอเคร',
+  'ไม่ซ้ำค่ะ จบ',
 ];
 
 export function PredictionForm({ onPredict, isLoading }: PredictionFormProps) {
