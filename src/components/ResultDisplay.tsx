@@ -56,10 +56,14 @@ export function ResultDisplay({ result }: ResultDisplayProps) {
   }
 
   // ✅ FIX: กันจอขาว 1 (ถ้า label มาผิด ให้ปัดเป็น neutral)
+  // normalize label ให้เป็น lowercase ก่อน
+  const normalizedLabel = result.label?.toLowerCase() as SentimentLabel;
+
   const safeLabel: SentimentLabel =
-    result.label && sentimentConfig[result.label]
-      ? result.label
+    normalizedLabel && sentimentConfig[normalizedLabel]
+      ? normalizedLabel
       : 'neutral';
+
 
   const config = sentimentConfig[safeLabel];
   const Icon = config.icon;
