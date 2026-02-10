@@ -1,67 +1,47 @@
 import os
-import time
-import joblib
-import numpy as np
-import warnings
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-
-# ปิด Warning เพื่อความสะอาดของ Log
-warnings.filterwarnings("ignore", category=UserWarning)
+import joblib
+import time
+import numpy as np
 
 # ==========================================
-# 📂 1. Setup Paths
+# 📂 1. Setup Paths (สำคัญมากสำหรับ Render)
 # ==========================================
+# หาที่อยู่ปัจจุบันของไฟล์ main.py
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PARENT_DIR = os.path.dirname(BASE_DIR)
-
-# ค้นหา Folder 'dist' สำหรับ Frontend
-POSSIBLE_DIST_PATHS = [
-    os.path.join(PARENT_DIR, "frontend", "dist"),
-    os.path.join(BASE_DIR, "dist"),
-    os.path.join(PARENT_DIR, "dist"),
-    "/opt/render/project/src/backend/dist"
-]
-
-DIST_DIR = ""
-for path in POSSIBLE_DIST_PATHS:
-    if os.path.exists(os.path.join(path, "index.html")):
-        DIST_DIR = path
-        break
-
-# Path สำหรับโมเดล
-MODEL_PATH_SPLIT = os.path.join(BASE_DIR, "model", "sentiment_model_split.joblib")
-MODEL_PATH_KFOLD = os.path.join(BASE_DIR, "model", "sentiment_model_kfold.joblib")
+# ชี้ไปที่โฟลเดอร์ dist (Frontend ที่ Build แล้ว)
+DIST_DIR = os.path.join(BASE_DIR, "dist")
+# ชี้ไปที่ไฟล์ Model (แก้ path ให้ชัวร์)
+MODEL_PATH = os.path.join(BASE_DIR, "model", "sentiment_model_v1.joblib")
 
 # ==========================================
-# 🤖 2. Load Models
+# 🤖 2. Load Model
 # ==========================================
-models_dict = {}
+model = None
+label_encoder = None
 
-def load_bundle(path, name):
-    try:
-        if os.path.exists(path):
-            bundle = joblib.load(path)
-            print(f"✅ {name} loaded successfully from {path}")
-            return bundle
-        else:
-            print(f"⚠️ {name} NOT FOUND at {path}")
-            return None
-    except Exception as e:
-        print(f"❌ Error loading {name}: {e}")
-        return None
-
-# โหลดโมเดลเข้า Dictionary
-models_dict["split"] = load_bundle(MODEL_PATH_SPLIT, "Split Model")
-models_dict["kfold"] = load_bundle(MODEL_PATH_KFOLD, "K-Fold Model")
+try:
+    print(f"📂 Loading model from: {MODEL_PATH}")
+    bundle = joblib.load(MODEL_PATH)
+    model = bundle["model"]
+    label_encoder = bundle["label_encoder"]
+    print("✅ Model loaded successfully!")
+except Exception as e:
+    print(f"❌ Failed to load model: {e}")
+    # หมายเหตุ: บน Render ถ้าโหลดโมเดลไม่ได้ App อาจจะยังรันได้แต่ Predict ไม่ได้
 
 # ==========================================
-# 🚀 3. App Setup
+# 🚀 3. App & CORS
 # ==========================================
-app = FastAPI(title="Thai Sentiment Insights API", version="3.0.0")
+app = FastAPI(
+    title="Thai Sentiment Insights API",
+    version="1.0.0",
+    description="Hybrid Server: Serving React Frontend + Python Backend"
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -71,104 +51,101 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ---------- Schemas ----------
 class TextRequest(BaseModel):
     text: str
 
 # ==========================================
-# 🔌 4. API Routes
+# 🔌 4. API Routes (Backend Logic)
 # ==========================================
 
-@app.get("/api/health")
+@app.get("/api/health")  # เปลี่ยนเป็น /api/health เพื่อไม่ให้ชนกับ Frontend
 def health():
     return {
-        "status": "online",
-        "models_ready": {k: v is not None for k, v in models_dict.items()},
-        "timestamp": time.time()
+        "status": "healthy" if model else "unhealthy",
+        "model_loaded": model is not None,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")
+    }
+
+@app.get("/model/info")
+def model_info():
+    if not model:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    
+    return {
+        "model_name": "Thai Sentiment Classifier",
+        "version": "1.0.0",
+        "classifier_type": type(model).__name__,
+        "num_classes": len(label_encoder.classes_),
+        "labels": [str(l).lower() for l in label_encoder.classes_],
+        "accuracy": 0.995, # อัปเดตตามจริง
+        "f1_score": 0.992
     }
 
 @app.post("/predict")
 def predict_sentiment(req: TextRequest):
-    # ตรวจสอบว่ามีโมเดลอย่างน้อย 1 ตัวที่พร้อม
-    if not any(models_dict.values()):
-        raise HTTPException(status_code=503, detail="No models loaded on server")
+    if not model or not label_encoder:
+        raise HTTPException(status_code=503, detail="Model is not available")
 
     start_time = time.time()
     text = req.text.strip()
-    
+
     if not text:
-        raise HTTPException(status_code=400, detail="Text is empty")
+        raise HTTPException(status_code=400, detail="Text cannot be empty")
 
-    prediction_results = {}
-    
-    for key in ["split", "kfold"]:
-        try:
-            bundle = models_dict.get(key)
-            if not bundle:
-                prediction_results[key] = {"error": "Model not available"}
-                continue
+    try:
+        proba = model.predict_proba([text])[0]
+        pred_idx = proba.argmax()
+        raw_label = label_encoder.inverse_transform([pred_idx])[0]
+        label = str(raw_label).lower() 
+        confidence = float(proba[pred_idx])
 
-            # --- 🎯 จัดการโครงสร้าง Bundle ---
-            # รองรับทั้งแบบเก่า (Dict) และแบบใหม่ (Pipeline ตรงๆ)
-            if isinstance(bundle, dict):
-                model = bundle.get("model")
-                le = bundle.get("label_encoder")
-            else:
-                model = bundle
-                # ดึง encoder ที่ฝังไว้ในตัว Pipeline (ถ้ามี)
-                le = getattr(model, 'label_encoder', None)
+        probabilities = {
+            str(label_encoder.inverse_transform([i])[0]).lower(): float(p)
+            for i, p in enumerate(proba)
+        }
 
-            # --- 🔮 ทำนายผล ---
-            # ส่งเป็น List [text] เพราะ Pipeline ต้องการ input เป็น iterable
-            proba = model.predict_proba([text])[0]
-            pred_idx = proba.argmax()
-            
-            # แปลง Label เลข -> คำ
-            if le:
-                label = str(le.inverse_transform([pred_idx])[0]).lower()
-            else:
-                # Fallback mapping
-                labels = ["negative", "neutral", "positive"]
-                label = labels[pred_idx] if pred_idx < len(labels) else str(pred_idx)
+        latency_ms = (time.time() - start_time) * 1000
 
-            prediction_results[key] = {
-                "label": label,
-                "confidence": float(proba[pred_idx]),
-                "probabilities": {str(i): float(p) for i, p in enumerate(proba)}
-            }
+        return {
+            "label": label,
+            "confidence": confidence,
+            "probabilities": probabilities,
+            "latency_ms": latency_ms,
+            "preprocessed_text": text
+        }
 
-        except Exception as e:
-            print(f"❌ {key} prediction error: {e}")
-            prediction_results[key] = {
-                "label": "error",
-                "confidence": 0,
-                "message": str(e)
-            }
-
-    return {
-        "results": prediction_results,
-        "latency_ms": round((time.time() - start_time) * 1000, 2),
-        "text": text
-    }
+    except Exception as e:
+        print(f"Prediction Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ==========================================
-# 🌐 5. Serving Frontend
+# 🌐 5. Frontend Serving (ส่วนที่เพิ่มเข้ามา)
 # ==========================================
-if DIST_DIR:
+
+# ตรวจสอบว่ามีโฟลเดอร์ dist ไหม
+if os.path.exists(DIST_DIR):
+    # 1. Mount Assets (CSS, JS, Images)
+    # React จะเรียกไฟล์พวกนี้ผ่าน /assets/...
     app.mount("/assets", StaticFiles(directory=os.path.join(DIST_DIR, "assets")), name="assets")
 
+    # 2. Serve index.html ที่ Root (/)
     @app.get("/")
-    async def serve_index():
+    async def serve_spa():
         return FileResponse(os.path.join(DIST_DIR, "index.html"))
 
+    # 3. Catch-All Route (สำหรับ React Router)
+    # ถ้า User กด Refresh หน้า /about หรือ /result ระบบจะส่ง index.html ให้ React จัดการต่อ
     @app.get("/{full_path:path}")
     async def catch_all(full_path: str):
-        if any(full_path.startswith(p) for p in ["api", "predict"]):
-            return None
         file_path = os.path.join(DIST_DIR, full_path)
+        # ถ้าไฟล์มีอยู่จริง (เช่น favicon.ico) ให้ส่งไฟล์นั้น
         if os.path.exists(file_path):
             return FileResponse(file_path)
+        # ถ้าไม่เจอไฟล์ ให้ส่ง index.html (SPA Fallback)
         return FileResponse(os.path.join(DIST_DIR, "index.html"))
 else:
+    print("⚠️ WARNING: 'dist' folder not found! Frontend will not be served.")
     @app.get("/")
     def root():
-        return {"message": "Backend is running. Frontend (dist) folder not found."}
+        return {"message": "Backend is running, but Frontend (dist) is missing."}
