@@ -9,14 +9,22 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 # ==========================================
-# 📂 1. Setup Paths (ทำให้ยืดหยุ่นที่สุด)
+# 📂 1. Setup Paths (แก้ไขให้ถอยหลังไปหา frontend/dist)
 # ==========================================
+# BASE_DIR คือโฟลเดอร์ /backend
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DIST_DIR = os.path.join(BASE_DIR, "dist")
 
-# แก้ไข Path ให้ดักทั้งกรณีมีโฟลเดอร์ model และไม่มี
+# 💡 หัวใจสำคัญ: ถอยออกจาก backend เพื่อไปหา frontend/dist
+# อ้ายใช้ abspath เพื่อให้ระบบมั่นใจว่า Path ถูกต้องชัวร์ๆ
+DIST_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "frontend", "dist"))
+
+# Path สำหรับโมเดล (อยู่ใน backend/model)
 MODEL_PATH_SPLIT = os.path.join(BASE_DIR, "model", "sentiment_model_split.joblib")
 MODEL_PATH_KFOLD = os.path.join(BASE_DIR, "model", "sentiment_model_kfold.joblib")
+
+# Debugging: พิมพ์เช็คใน Log ของ Render เพื่อความสบายใจ
+print(f"🖥️ Frontend Static Path: {DIST_DIR}")
+print(f"🏠 Index.html exists: {os.path.exists(os.path.join(DIST_DIR, 'index.html'))}")
 
 # ==========================================
 # 🤖 2. Load Models (Dual Loading Logic)
@@ -25,35 +33,30 @@ models_dict = {}
 
 def load_bundle(path, name):
     try:
-        # Debugging: พิมพ์เช็คใน Log Render
-        print(f"🔍 Checking path: {path}")
+        print(f"🔍 Checking model at: {path}")
         if os.path.exists(path):
             bundle = joblib.load(path)
             print(f"✅ {name} loaded successfully!")
             return bundle
         else:
-            # ดักเคสถ้าไฟล์วางอยู่ที่เดียวกับ main.py (กันพลาด)
+            # ดักเคสถ้าไฟล์วางอยู่ที่เดียวกับ main.py
             alt_path = os.path.join(BASE_DIR, os.path.basename(path))
             if os.path.exists(alt_path):
-                print(f"📂 Found at alt path: {alt_path}")
+                print(f"📂 Found {name} at alt path: {alt_path}")
                 return joblib.load(alt_path)
-            print(f"⚠️ {name} NOT FOUND at {path}")
+            print(f"⚠️ {name} NOT FOUND!")
             return None
     except Exception as e:
-        print(f"❌ Failed to load {name}: {e}")
+        print(f"❌ Error loading {name}: {e}")
         return None
 
-# โหลดเก็บไว้ใน Dictionary
 models_dict["split"] = load_bundle(MODEL_PATH_SPLIT, "Split Model")
 models_dict["kfold"] = load_bundle(MODEL_PATH_KFOLD, "K-Fold Model")
 
 # ==========================================
-# 🚀 3. App & CORS Setup
+# 🚀 3. App Setup
 # ==========================================
-app = FastAPI(
-    title="Thai Sentiment Dual-Model API",
-    version="2.0.0"
-)
+app = FastAPI(title="Thai Sentiment Dual-Model API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -67,7 +70,7 @@ class TextRequest(BaseModel):
     text: str
 
 # ==========================================
-# 🔌 4. API Routes
+# 🔌 4. API Routes (ต้องอยู่เหนือส่วน Static Files)
 # ==========================================
 
 @app.get("/api/health")
@@ -83,7 +86,6 @@ def health():
 
 @app.get("/model/info")
 def get_model_info():
-    # เพิ่ม Endpoint นี้เพื่อรองรับฟังก์ชันใน ApiService ของแอ๋ม
     return {
         "split": {"accuracy": 0.85, "method": "Train-Test Split"},
         "kfold": {"accuracy": 0.92, "method": "5-Fold CV"}
@@ -96,12 +98,10 @@ def predict_sentiment(req: TextRequest):
 
     start_time = time.time()
     text = req.text.strip()
-
     if not text:
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
     prediction_results = {}
-
     try:
         for key in ["split", "kfold"]:
             bundle = models_dict.get(key)
@@ -110,7 +110,6 @@ def predict_sentiment(req: TextRequest):
                 label_encoder = bundle.get("label_encoder")
                 
                 if model and label_encoder:
-                    # ทำนาย
                     proba = model.predict_proba([text])[0]
                     pred_idx = proba.argmax()
                     raw_label = label_encoder.inverse_transform([pred_idx])[0]
@@ -126,31 +125,36 @@ def predict_sentiment(req: TextRequest):
             else:
                 prediction_results[key] = None
 
-        latency_ms = (time.time() - start_time) * 1000
-
         return {
             "results": prediction_results,
-            "latency_ms": latency_ms,
+            "latency_ms": (time.time() - start_time) * 1000,
             "preprocessed_text": text,
             "compare_mode": True
         }
-
     except Exception as e:
         print(f"Prediction Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==========================================
-# 🌐 5. Static Files Serving (Production)
+# 🌐 5. Static Files Serving (วางไว้ท้ายสุด)
 # ==========================================
 if os.path.exists(DIST_DIR):
+    # 1. เสิร์ฟโฟลเดอร์ assets (พวกไฟล์ js, css ของ frontend)
     app.mount("/assets", StaticFiles(directory=os.path.join(DIST_DIR, "assets")), name="assets")
 
+    # 2. เสิร์ฟหน้าแรก index.html
     @app.get("/")
-    async def serve_spa():
+    async def serve_index():
         return FileResponse(os.path.join(DIST_DIR, "index.html"))
 
+    # 3. Catch-all: ถ้าพิมพ์ URL อื่นๆ ให้กลับมาที่ index.html (ยกเว้น API)
     @app.get("/{full_path:path}")
     async def catch_all(full_path: str):
+        # รายชื่อ prefix ของ API ที่เราไม่ต้องการให้ FileResponse แย่งไปทำงาน
+        api_prefixes = ["api", "predict", "model", "docs", "openapi.json"]
+        if any(full_path.startswith(prefix) for prefix in api_prefixes):
+            return None 
+            
         file_path = os.path.join(DIST_DIR, full_path)
         if os.path.exists(file_path):
             return FileResponse(file_path)
@@ -158,4 +162,4 @@ if os.path.exists(DIST_DIR):
 else:
     @app.get("/")
     def root():
-        return {"message": "API is online. (Frontend dist not found)"}
+        return {"message": "API Online, but Frontend dist not found at " + DIST_DIR}
