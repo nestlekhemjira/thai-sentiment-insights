@@ -49,18 +49,23 @@ export function ModelInfoCard() {
   };
 
   useEffect(() => {
-    const fetchInfo = async () => {
-      try {
-        await new Promise(resolve => setTimeout(resolve, 800));
-        setInfo(mockModelInfo);
-      } catch (error) {
-        console.error('Failed to fetch model info:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchInfo();
-  }, []);
+  const fetchInfo = async () => {
+    try {
+      const res = await fetch('/model/info');
+      if (!res.ok) throw new Error('API error');
+      const data = await res.json();
+      setInfo(data);
+    } catch (error) {
+      console.error('Failed to fetch model info, using fallback:', error);
+      setInfo(mockModelInfo); // 👈 fallback ตรงนี้
+    } finally {
+      setLoading(false);
+    }
+  };
+  fetchInfo();
+}, []);
+
+
 
   if (loading) {
     return (
