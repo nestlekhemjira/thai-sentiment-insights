@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BookOpen, Cpu } from 'lucide-react'; // 🗑️ ลบ Github ออกแล้ว
+import { BookOpen, MessageSquareSearch, Brain } from 'lucide-react';
 import { PredictionForm } from '@/components/PredictionForm';
 import { ResultDisplay } from '@/components/ResultDisplay';
 import { ModelInfoCard } from '@/components/ModelInfoCard';
@@ -31,7 +31,7 @@ const Index = () => {
         <div className="container max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-xl bg-primary/10">
-              <Cpu className="h-6 w-6 text-primary" />
+              <MessageSquareSearch className="h-6 w-6 text-primary" />
             </div>
             <div>
               <h1 className="text-xl font-bold text-foreground">
