@@ -5,4 +5,4 @@ joblib
 numpy
 scipy
 threadpoolctl
-scikit-learn==1.4.2
+scikit-learn==1.8.0
