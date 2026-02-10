@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Loader2, Info, Search, CheckCircle2, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Loader2, Info, Search } from 'lucide-react';
 
 type SentimentLabel = 'Positive' | 'Negative' | 'Neutral';
 
@@ -7,9 +7,9 @@ interface ErrorCase {
   id: string | number;
   input_text: string;
   actual_label: SentimentLabel;
-  split_predicted: SentimentLabel; // ผลจาก Model A (ที่พลาด)
-  kfold_predicted: SentimentLabel; // ผลจาก Model B (ที่แก้แล้ว)
-  error_group: string;
+  predicted_label: SentimentLabel;
+  error_type: string;
+  confidence: number;
   reason: string;
 }
 
@@ -23,63 +23,66 @@ export function ErrorCasesCard() {
   const [cases, setCases] = useState<ErrorCase[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // ---------------------------------------------------------
-  // ✅ ข้อมูลเปรียบเทียบเคสที่ Model B (K-Fold) แก้ปัญหาได้ดีขึ้น
-  // ---------------------------------------------------------
-  const comparisonCases: ErrorCase[] = [
+  // ข้อมูลจริงจาก Log (5 Cases)
+  const realErrorCases: ErrorCase[] = [
+    // Case 1
     { 
       id: 1, 
-      input_text: "รสชาติ ดี ม้ ้า ก/ ไม่ แพง/ พนักงาน ไม่ค่อย สนใจ. แนะนำ เลย", 
+      input_text: "มา ลอง ชาบู... รสชาติ ดี ม้ ้า ก/ ไม่ แพง/ โอเค นะ/ พนักงาน ไม่ค่อย สนใจ. แนะนำ เลย", 
       actual_label: "Positive", 
-      split_predicted: "Neutral", 
-      kfold_predicted: "Positive", 
-      error_group: "Mixed Signal (สัญญาณขัดแย้ง)", 
-      reason: "K-Fold ช่วยให้โมเดลให้น้ำหนักคำชม 'แนะนำ/ดี' ชนะคำติ 'ไม่ค่อยสนใจ' ในเชิงบริบทได้" 
+      predicted_label: "Neutral", 
+      error_type: "Mixed Signal (สัญญาณขัดแย้ง)", 
+      confidence: 0.438, 
+      reason: "มีคำชม 'รสชาติดี/แนะนำ' แต่เจอคำลบ 'ไม่สนใจ' มาหักล้าง โมเดลเลยเลือกกลาง" 
     },
+    // Case 2
     { 
       id: 2, 
-      input_text: "แวะ มา กิน ซูชิ... รอ นาน มาก/ ร้าน สะอาด ด/ ไม่ น่า ซ้ำ", 
+      input_text: "แวะ มา กิน ซูชิ... รอ นาน มาก/ ร้าน สะอาด ด/ บรรยากาศ ทั่วไป. ไม่ น่า ซ้ำ", 
       actual_label: "Negative", 
-      split_predicted: "Neutral", 
-      kfold_predicted: "Negative", 
-      error_group: "Mixed Signal (สัญญาณขัดแย้ง)", 
-      reason: "ตัวเดิมโดนคำว่า 'สะอาด' ดึงคะแนน แต่ K-Fold เรียนรู้บทสรุป 'ไม่น่าซ้ำ' ได้แม่นยำกว่า" 
+      predicted_label: "Neutral", 
+      error_type: "Mixed Signal (สัญญาณขัดแย้ง)", 
+      confidence: 0.485, 
+      reason: "คำว่า 'ร้านสะอาด' (Pos) ขัดแย้งกับ 'รอนาน/ไม่น่าซ้ำ' (Neg) โมเดลให้น้ำหนักผิด" 
     },
+    // Case 3
     { 
       id: 3, 
-      input_text: "คิว ช้า/ โอ เค ค้ นะ/ กลิ่น แรง... ไม่ น่า ซ้ำ 🥲", 
+      input_text: "แวะ ม้า กิน ก๋วยเตี๋ยว... คิว ช้า/ โอ เค ค้ นะ/ กลิ่น แรง... ไม่ น่า ซ้ำ 🥲", 
       actual_label: "Negative", 
-      split_predicted: "Neutral", 
-      kfold_predicted: "Negative", 
-      error_group: "Ambiguity (ความกำกวม)", 
-      reason: "แยกแยะ 'โอเค' ที่เป็นสร้อยคำ ออกจากอารมณ์ลบหลัก 'คิวช้า/กลิ่นแรง' ได้ดีขึ้น" 
+      predicted_label: "Neutral", 
+      error_type: "Ambiguity (ความกำกวม)", 
+      confidence: 0.505, 
+      reason: "คำว่า 'โอเค' (Neutral Keyword) ดึงคะแนนขึ้น แม้สรุปท้ายจะบอกว่า 'ไม่น่าซ้ำ'" 
     },
+    // Case 4
     { 
       id: 4, 
-      input_text: "ดูแล ดี/ โอเค นะ... ที่ จอด น้อย. แนะนำ เรย 😋", 
+      input_text: "กิน ข้าวมันไก่... ดูแล ดี/ โอเค นะ... ที่ จอด น้อย. แนะนำ เรย 😋", 
       actual_label: "Positive", 
-      split_predicted: "Neutral", 
-      kfold_predicted: "Positive", 
-      error_group: "Typo / Noise (คำวิบัติ)", 
-      reason: "การเทรนหลายรอบช่วยให้โมเดลทนทานต่อคำวิบัติอย่าง 'เรย' และการตัดคำที่ผิดพลาด" 
+      predicted_label: "Neutral", 
+      error_type: "Typo / Noise (คำวิบัติ)", 
+      confidence: 0.599, 
+      reason: "พิมพ์คำว่า 'เรย' (เลย) และตัดคำผิด 'ม้ ้า ก' ทำให้ Feature หายไปบางส่วน" 
     },
+    // Case 5
     { 
       id: 5, 
       input_text: "มา ลอง เครื่องดื่ม... คิว ช้า/ โอเค. ไม่ น่า ซ้ำ 😤", 
       actual_label: "Negative", 
-      split_predicted: "Neutral", 
-      kfold_predicted: "Negative", 
-      error_group: "Ambiguity (ความกำกวม)", 
-      reason: "K-Fold มองเห็นรูปแบบความสัมพันธ์ของคำว่า 'ไม่น่าซ้ำ' กับอารมณ์ Negative ได้เสถียรกว่า" 
+      predicted_label: "Neutral", 
+      error_type: "Ambiguity (ความกำกวม)", 
+      confidence: 0.553, 
+      reason: "สับสนคำว่า 'โอเค' (แปลว่ายอมรับได้) กับบริบทจริงที่ลูกค้าไม่พอใจ (คิวช้า)" 
     },
   ];
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setCases(comparisonCases);
+    // จำลองการโหลด
+    setTimeout(() => {
+      setCases(realErrorCases);
       setLoading(false);
-    }, 800);
-    return () => clearTimeout(timer);
+    }, 500);
   }, []);
 
   if (loading) {
@@ -92,75 +95,68 @@ export function ErrorCasesCard() {
 
   return (
     <div className="card-elevated p-6 space-y-6 h-full border-l-4 border-l-orange-500/50">
-      {/* Header */}
       <div className="flex items-center gap-3 border-b border-border/40 pb-4">
         <div className="p-2.5 rounded-xl bg-orange-500/10">
           <AlertTriangle className="h-6 w-6 text-orange-600" />
         </div>
         <div>
-          <h2 className="text-xl font-bold text-foreground">Error Comparison</h2>
-          <p className="text-xs text-muted-foreground">
-            วิเคราะห์เคสที่ Model A พลาด แต่ Model B (K-Fold) แก้ไขได้
+          <h2 className="text-xl font-bold text-foreground">Error Analysis</h2>
+          <p className="text-sm text-muted-foreground">
+            วิเคราะห์ข้อผิดพลาดจริงจาก Test Set (5 ตัวอย่าง)
           </p>
         </div>
       </div>
 
-      {/* List of Cases */}
-      <div className="space-y-4 max-h-[650px] overflow-y-auto pr-2 custom-scrollbar">
-        {cases.map((c) => (
-          <div key={c.id} className="group p-4 rounded-xl bg-muted/30 border border-border/60 space-y-3 hover:bg-muted/50 transition-all">
+      <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+        {cases.map((errorCase) => (
+          <div 
+            key={errorCase.id} 
+            className="group p-4 rounded-xl bg-muted/30 border border-border/60 space-y-3 hover:bg-muted/60 transition-all hover:shadow-sm"
+          >
             {/* Input Text */}
-            <div className="flex items-start gap-2">
-              <Search className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-              <p className="text-sm font-thai italic text-foreground leading-relaxed">
-                "{c.input_text}"
-              </p>
+            <div className="flex justify-between items-start gap-2">
+                <div className="flex items-start gap-2">
+                    <Search className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                    <p className="text-sm font-thai text-foreground leading-relaxed font-medium italic line-clamp-2" title={errorCase.input_text}>
+                    "{errorCase.input_text}"
+                    </p>
+                </div>
             </div>
             
-            <div className="pl-6 space-y-3">
-              {/* Grouping Tag */}
-              <div className="inline-block px-2 py-0.5 rounded text-[10px] bg-orange-500/10 text-orange-600 border border-orange-500/20 font-bold uppercase tracking-tight">
-                กลุ่มอาการ: {c.error_group}
-              </div>
+            {/* Error Type Badge */}
+            <div className="flex items-center gap-2 mb-1 pl-6">
+               <span className="px-2 py-0.5 rounded text-[10px] bg-orange-500/10 text-orange-600 border border-orange-500/20 font-medium">
+                 {errorCase.error_type}
+               </span>
+               <span className="text-[10px] font-mono text-muted-foreground/70">
+                 Conf: {(errorCase.confidence * 100).toFixed(1)}%
+               </span>
+            </div>
 
-              {/* Comparison Matrix in Card */}
-              <div className="grid grid-cols-2 gap-3 text-[11px]">
-                {/* Model A Result */}
-                <div className="p-2 rounded-lg bg-background border border-border flex flex-col gap-1.5 shadow-sm">
-                  <span className="text-muted-foreground font-medium flex items-center gap-1">
-                    <XCircle className="h-3.5 w-3.5 text-red-500" /> Model A (Split)
-                  </span>
-                  <div className={`py-1 rounded border text-center font-bold ${labelColors[c.split_predicted]}`}>
-                    {c.split_predicted}
-                  </div>
-                </div>
+            {/* Labels Comparison */}
+            <div className="flex items-center gap-2 flex-wrap text-xs pl-6">
+              <span className={`px-2.5 py-1 rounded-md border font-semibold flex items-center gap-1.5 ${labelColors[errorCase.actual_label]}`}>
+                ความจริง: {errorCase.actual_label}
+              </span>
 
-                {/* Model B Result */}
-                <div className="p-2 rounded-lg bg-primary/5 border border-primary/20 flex flex-col gap-1.5 shadow-sm ring-1 ring-primary/10">
-                  <span className="text-primary font-bold flex items-center gap-1">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-green-500" /> Model B (K-Fold)
-                  </span>
-                  <div className={`py-1 rounded border text-center font-bold ${labelColors[c.kfold_predicted]}`}>
-                    {c.kfold_predicted}
-                  </div>
-                </div>
-              </div>
+              <ArrowRight className="h-3 w-3 text-muted-foreground/50" />
 
-              {/* Analysis Reason */}
-              <div className="flex items-start gap-2 pt-2 border-t border-border/40 text-[11px] text-muted-foreground leading-relaxed">
-                <Info className="h-4 w-4 text-primary/70 shrink-0" />
-                <span>
-                  <strong className="text-foreground">Why improved:</strong> {c.reason}
-                </span>
-              </div>
+              <span className={`px-2.5 py-1 rounded-md border font-semibold flex items-center gap-1.5 ${labelColors[errorCase.predicted_label]}`}>
+                AI ทาย: {errorCase.predicted_label}
+              </span>
+            </div>
+
+            {/* Reason Analysis */}
+            <div className="flex items-start gap-2 pt-2 border-t border-border/40 text-xs text-muted-foreground pl-1">
+                <Info className="h-3.5 w-3.5 mt-0.5 text-primary/70 shrink-0" />
+                <span>{errorCase.reason}</span>
             </div>
           </div>
         ))}
       </div>
       
-      {/* Footer Note */}
-      <p className="text-[10px] text-center text-muted-foreground bg-muted/40 py-2 rounded-lg border border-border/40">
-        * ผลการวิเคราะห์แสดงให้เห็นว่า Model B มีความเสถียร (Robustness) สูงกว่าต่อข้อมูลที่ซับซ้อน
+      <p className="text-[10px] text-center text-muted-foreground pt-2">
+        * ข้อผิดพลาดส่วนใหญ่เกิดจากประโยคที่มีความหมายขัดแย้งกัน (Mixed Sentiment) ทำให้โมเดลเลือกตอบเป็นกลาง
       </p>
     </div>
   );
