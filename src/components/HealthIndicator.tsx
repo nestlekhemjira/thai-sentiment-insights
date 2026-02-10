@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Activity, CheckCircle2, XCircle, Loader2, ShieldCheck } from 'lucide-react';
+import { Activity, XCircle, Loader2, ShieldCheck } from 'lucide-react';
 import { apiService } from '@/services/api';
 
 export function HealthIndicator() {
@@ -13,8 +13,8 @@ export function HealthIndicator() {
         setHealth(status);
       } catch {
         setHealth({
-          status: 'unhealthy',
-          models_status: { split_model: false, kfold_model: false },
+          status: 'offline',
+          models: { split: false, kfold: false },
         });
       } finally {
         setLoading(false);
@@ -35,14 +35,13 @@ export function HealthIndicator() {
     );
   }
 
-  // ระบบจะถือว่า Healthy ก็ต่อเมื่อโหลดโมเดลได้ทั้ง 2 ตัว
-  const isHealthy = health?.status === 'healthy' && 
-                    health?.models_status?.split_model && 
-                    health?.models_status?.kfold_model;
+  // ✅ แก้ไขชื่อตัวแปรให้ตรงกับ Backend (status: 'online' และ models.split / models.kfold)
+  const isHealthy = (health?.status === 'online' || health?.status === 'healthy') && 
+                    health?.models?.split === true && 
+                    health?.models?.kfold === true;
 
   return (
     <div className="flex items-center gap-3">
-      {/* Badge บอกสถานะ API */}
       <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[10px] font-bold uppercase tracking-tighter transition-all ${
         isHealthy 
           ? 'bg-green-500/5 text-green-600 border-green-500/20' 
@@ -58,7 +57,6 @@ export function HealthIndicator() {
         </span>
       </div>
 
-      {/* ไอคอน Pulse บอกจังหวะการทำงาน */}
       <div className="relative flex items-center justify-center">
         <Activity className={`h-4 w-4 z-10 ${isHealthy ? 'text-green-500 animate-pulse' : 'text-red-500'}`} />
         {isHealthy && (
