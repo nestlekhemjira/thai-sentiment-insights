@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Brain, Calendar, Target, Layers, Loader2, BarChart3, Settings, Zap } from 'lucide-react';
+import { Brain, Calendar, Target, Layers, Tag, Loader2, BarChart3, Settings } from 'lucide-react';
 
 interface ModelInfo {
   model_name: string;
@@ -20,51 +20,54 @@ export function ModelInfoCard() {
   const [loading, setLoading] = useState(true);
 
   // ---------------------------------------------------------
-  // ✅ ข้อมูลเปรียบเทียบ (Split vs K-Fold)
+  // ✅ ข้อมูลจริงจากการเทรน (Accuracy 99.5%)
   // ---------------------------------------------------------
-  const mockSplitInfo: ModelInfo = {
-    model_name: "Sentiment TF-IDF + LogReg (Split)",
+  const mockModelInfo: ModelInfo = {
+    model_name: "Sentiment TF-IDF + LogReg",
     classifier_type: "Logistic Regression",
     vectorizer_type: "TF-IDF (1,2-grams)",
-    accuracy: 0.995,
-    f1_score: 0.992,
+    
+    accuracy: 0.995,  // คำนวณจาก (995/1000)
+    f1_score: 0.992,  // จาก Log: Macro-F1: 0.9922
+    
     num_classes: 3,
-    labels: ['Negative', 'Neutral', 'Positive'],
+    // Label Mapping: 0=Negative, 1=Neutral, 2=Positive
+    labels: ['Negative', 'Neutral', 'Positive'], 
+    
     trained_at: new Date().toISOString(),
-    version: "1.0",
-    params: "max_features=10000, class_weight='balanced'",
-    matrix_data: [
-      [155, 3, 0],
-      [0, 201, 0],
-      [0, 2, 639]
-    ]
-  };
+    version: "1.0 (Final)",
+    
+    params: "max_features=None, class_weight='balanced'",
 
-  const mockKFoldInfo: ModelInfo = {
-    model_name: "Sentiment TF-IDF + LogReg (K-Fold)",
-    classifier_type: "Logistic Regression",
-    vectorizer_type: "TF-IDF (1,2-grams)",
-    accuracy: 0.999,
-    f1_score: 0.998,
-    num_classes: 3,
-    labels: ['Negative', 'Neutral', 'Positive'],
-    trained_at: new Date().toISOString(),
-    version: "Final",
-    params: "K=5, max_features=10000",
+    // Matrix จาก Log ของอ้าย
+    // [Negative, Neutral, Positive]
     matrix_data: [
-      [1000, 0, 0],
-      [0, 1000, 0],
-      [1, 0, 2999]
+      [155, 3, 0],   // Actual Negative: ถูก 155, ทายผิดเป็น Neu 3
+      [0, 201, 0],   // Actual Neutral:  ถูก 201 (Perfect!)
+      [0, 2, 639]    // Actual Positive: ถูก 639, ทายผิดเป็น Neu 2
     ]
   };
 
   useEffect(() => {
-    // ให้ใช้ข้อมูล Mock ทันทีเพื่อความเร็วและแม่นยำตามรายงาน
-    setInfo(mockSplitInfo);
-    setLoading(false);
-  }, []);
+  const fetchInfo = async () => {
+    try {
+      const res = await fetch('/model/info');
+      if (!res.ok) throw new Error('API error');
+      const data = await res.json();
+      setInfo(data);
+    } catch (error) {
+      console.error('Failed to fetch model info, using fallback:', error);
+      setInfo(mockModelInfo); // 👈 fallback ตรงนี้
+    } finally {
+      setLoading(false);
+    }
+  };
+  fetchInfo();
+}, []);
 
-  if (loading || !info) {
+
+
+  if (loading) {
     return (
       <div className="card-elevated p-6 flex items-center justify-center min-h-[400px]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -72,18 +75,20 @@ export function ModelInfoCard() {
     );
   }
 
+  if (!info) return null;
+
   const stats = [
     { 
       icon: Brain, 
       label: 'Algorithm', 
       value: 'Logistic Regression',
-      subValue: 'Dual-Model Logic',
+      subValue: 'Class Weight: Balanced',
     },
     { 
       icon: Target, 
       label: 'Performance', 
-      value: `Acc: 99.5% - 99.9%`,
-      subValue: `High Consistency`,
+      value: `Acc: ${(info.accuracy * 100).toFixed(1)}%`,
+      subValue: `Macro-F1: ${(info.f1_score * 100).toFixed(2)}%`,
     },
     { 
       icon: Layers, 
@@ -94,8 +99,8 @@ export function ModelInfoCard() {
     { 
       icon: Calendar, 
       label: 'Status', 
-      value: 'Production Ready',
-      subValue: `Version Final`,
+      value: 'Ready to Deploy',
+      subValue: `Version ${info.version}`,
     },
   ];
 
@@ -107,9 +112,9 @@ export function ModelInfoCard() {
           <Settings className="h-6 w-6 text-primary" />
         </div>
         <div>
-          <h2 className="text-xl font-bold text-foreground">Technical Evaluation</h2>
+          <h2 className="text-xl font-bold text-foreground">Model Evaluation</h2>
           <p className="text-sm text-muted-foreground font-mono">
-             Comparative Matrix Analysis
+            Train Script: {info.model_name}
           </p>
         </div>
       </div>
@@ -122,89 +127,66 @@ export function ModelInfoCard() {
               <stat.icon className="h-4 w-4" />
               <span className="text-xs font-medium uppercase tracking-wider">{stat.label}</span>
             </div>
-            <p className="text-sm font-bold font-mono text-foreground truncate">{stat.value}</p>
-            <p className="text-[10px] text-muted-foreground truncate">{stat.subValue}</p>
+            <p className="text-sm font-bold font-mono text-foreground truncate">
+              {stat.value}
+            </p>
+            <p className="text-[10px] text-muted-foreground truncate">
+              {stat.subValue}
+            </p>
           </div>
         ))}
       </div>
 
-      <div className="space-y-8 pt-4">
-        {/* --- ตารางที่ 1: Split Model --- */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between text-sm font-semibold text-foreground">
-            <div className="flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-muted-foreground" />
-              Model A: Train/Test Split
-            </div>
-            <span className="text-[10px] font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded">
-              1,000 samples
-            </span>
+      {/* Confusion Matrix Section */}
+      <div className="space-y-3 pt-2">
+        <div className="flex items-center justify-between text-sm font-semibold text-foreground">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-primary" />
+            Confusion Matrix
           </div>
-          
-          <div className="bg-muted/30 rounded-xl p-4 border border-border/60">
-            <div className="grid grid-cols-4 gap-2 text-center text-[10px] font-medium text-muted-foreground mb-2">
-              <div className="flex items-end justify-center pb-1 italic">Act \ Pred</div>
-              <div className="text-red-600 bg-red-500/10 rounded py-1">Neg</div>
-              <div className="text-gray-600 bg-gray-500/10 rounded py-1">Neu</div>
-              <div className="text-green-600 bg-green-500/10 rounded py-1">Pos</div>
-            </div>
-
-            {mockSplitInfo.matrix_data.map((row, i) => (
-              <div key={i} className="grid grid-cols-4 gap-2 text-center mb-2 last:mb-0">
-                <div className="text-[9px] font-bold flex items-center justify-center rounded py-1 border bg-background text-muted-foreground">
-                  {mockSplitInfo.labels[i].slice(0,3)}
-                </div>
-                {row.map((val, j) => (
-                  <div key={j} className={`text-xs font-mono py-2 rounded-lg border flex items-center justify-center
-                    ${i === j ? 'bg-primary/5 border-primary/20 text-primary font-bold' : 'bg-background/80 border-border/20 text-muted-foreground/30'}`}>
-                    {val}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
+          <span className="text-[10px] font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded">
+            Test Set (1,000 samples)
+          </span>
         </div>
-
-        {/* --- ตารางที่ 2: K-Fold Model (เพิ่มใหม่) --- */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between text-sm font-semibold text-foreground">
-            <div className="flex items-center gap-2 text-primary">
-              <Zap className="h-4 w-4 fill-current" />
-              Model B: Final K-Fold CV
-            </div>
-            <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">
-              5,000 samples
-            </span>
+        
+        <div className="bg-muted/30 rounded-xl p-4 border border-border/60">
+          {/* Header Row (Predicted Labels) */}
+          <div className="grid grid-cols-4 gap-2 text-center text-[10px] font-medium text-muted-foreground mb-2">
+            <div className="flex items-end justify-center pb-1 italic text-muted-foreground/70">Act \ Pred</div>
+            <div className="text-red-600 bg-red-500/10 rounded py-1 border border-red-200/50">Negative</div>
+            <div className="text-gray-600 bg-gray-500/10 rounded py-1 border border-gray-200/50">Neutral</div>
+            <div className="text-green-600 bg-green-500/10 rounded py-1 border border-green-200/50">Positive</div>
           </div>
-          
-          <div className="bg-primary/5 rounded-xl p-4 border border-primary/20 ring-1 ring-primary/10">
-            <div className="grid grid-cols-4 gap-2 text-center text-[10px] font-medium text-muted-foreground mb-2">
-              <div className="flex items-end justify-center pb-1 italic">Act \ Pred</div>
-              <div className="text-red-600 bg-red-500/5 rounded py-1">Neg</div>
-              <div className="text-gray-600 bg-gray-500/5 rounded py-1">Neu</div>
-              <div className="text-green-600 bg-green-500/5 rounded py-1">Pos</div>
-            </div>
 
-            {mockKFoldInfo.matrix_data.map((row, i) => (
-              <div key={i} className="grid grid-cols-4 gap-2 text-center mb-2 last:mb-0">
-                <div className="text-[9px] font-bold flex items-center justify-center rounded py-1 border bg-background text-muted-foreground">
-                  {mockKFoldInfo.labels[i].slice(0,3)}
-                </div>
-                {row.map((val, j) => (
-                  <div key={j} className={`text-xs font-mono py-2 rounded-lg border flex items-center justify-center
-                    ${i === j ? 'bg-primary/15 border-primary/40 text-primary font-bold shadow-sm' : 'bg-background/80 border-border/20 text-muted-foreground/30'}`}>
-                    {val}
-                  </div>
-                ))}
+          {/* Data Rows */}
+          {info.matrix_data.map((row, i) => (
+            <div key={i} className="grid grid-cols-4 gap-2 text-center mb-2 last:mb-0">
+              {/* Row Label (Actual) */}
+              <div className={`text-[10px] font-bold flex items-center justify-center rounded py-1 px-1 border
+                ${i === 0 ? 'text-red-600 bg-red-500/5 border-red-200/30' : 
+                  i === 1 ? 'text-gray-600 bg-gray-500/5 border-gray-200/30' : 'text-green-600 bg-green-500/5 border-green-200/30'}`}>
+                {info.labels[i]}
               </div>
-            ))}
-          </div>
+
+              {/* Matrix Values */}
+              {row.map((val, j) => (
+                <div key={j} className={`text-xs font-mono py-2 rounded-lg border flex items-center justify-center transition-all hover:scale-105
+                  ${i === j 
+                    ? 'bg-primary/15 border-primary/40 text-primary font-bold shadow-sm ring-1 ring-primary/20' // ถูกต้อง (Diagonal)
+                    : val > 0 
+                        ? 'bg-red-500/10 border-red-200 text-red-600 font-semibold' // ผิด (มีค่ามากกว่า 0)
+                        : 'bg-background/80 border-border/40 text-muted-foreground/30' // ผิด (เป็น 0 สีจางๆ)
+                  }`}>
+                  {val}
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
+        <p className="text-[10px] text-center text-muted-foreground">
+           * Accuracy 99.5% บน Test Set, ผิดพลาดเพียง 5 ตัวอย่างจาก 1,000 ตัวอย่าง
+        </p>
       </div>
-
-      <p className="text-[10px] text-center text-muted-foreground italic pt-2">
-         * K-Fold Cross Validation shows superior stability for production deployment.
-      </p>
     </div>
   );
 }
