@@ -7,7 +7,8 @@ import type {
 
 // 🟢 FIX 1: ปรับ Base URL ให้เป็นค่าว่าง ''
 // เพื่อให้ Browser ใช้โดเมนปัจจุบัน (แก้ปัญหา Mixed Content และ CORS)
-const API_BASE_URL = '';
+// 🟢 FIX 1: ใส่ URL เต็มของ Backend ลงไปเลยครับ
+const API_BASE_URL = 'https://deploymodel-thai-sentiment-insights.onrender.com';
 
 class ApiService {
   private baseUrl: string;
