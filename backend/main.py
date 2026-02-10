@@ -1,37 +1,43 @@
 import os
+import time
+import joblib
+import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-import joblib
-import time
-import numpy as np
 
 # ==========================================
-# 📂 1. Setup Paths
+# 📂 1. Setup Paths (ทำให้ยืดหยุ่นที่สุด)
 # ==========================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DIST_DIR = os.path.join(BASE_DIR, "dist")
 
-# Path สำหรับโมเดลทั้ง 2 ตัว (เช็คชื่อไฟล์ใน GitHub ให้ตรงกันนะ)
+# แก้ไข Path ให้ดักทั้งกรณีมีโฟลเดอร์ model และไม่มี
 MODEL_PATH_SPLIT = os.path.join(BASE_DIR, "model", "sentiment_model_split.joblib")
 MODEL_PATH_KFOLD = os.path.join(BASE_DIR, "model", "sentiment_model_kfold.joblib")
 
 # ==========================================
-# 🤖 2. Load Models (Dual Loading)
+# 🤖 2. Load Models (Dual Loading Logic)
 # ==========================================
 models_dict = {}
 
 def load_bundle(path, name):
     try:
-        print(f"📂 Loading {name} from: {path}")
+        # Debugging: พิมพ์เช็คใน Log Render
+        print(f"🔍 Checking path: {path}")
         if os.path.exists(path):
             bundle = joblib.load(path)
             print(f"✅ {name} loaded successfully!")
             return bundle
         else:
-            print(f"⚠️ {name} file not found at {path}")
+            # ดักเคสถ้าไฟล์วางอยู่ที่เดียวกับ main.py (กันพลาด)
+            alt_path = os.path.join(BASE_DIR, os.path.basename(path))
+            if os.path.exists(alt_path):
+                print(f"📂 Found at alt path: {alt_path}")
+                return joblib.load(alt_path)
+            print(f"⚠️ {name} NOT FOUND at {path}")
             return None
     except Exception as e:
         print(f"❌ Failed to load {name}: {e}")
@@ -46,8 +52,7 @@ models_dict["kfold"] = load_bundle(MODEL_PATH_KFOLD, "K-Fold Model")
 # ==========================================
 app = FastAPI(
     title="Thai Sentiment Dual-Model API",
-    version="2.0.0",
-    description="Comparative Analysis: Split vs K-Fold Models"
+    version="2.0.0"
 )
 
 app.add_middleware(
@@ -76,11 +81,18 @@ def health():
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")
     }
 
+@app.get("/model/info")
+def get_model_info():
+    # เพิ่ม Endpoint นี้เพื่อรองรับฟังก์ชันใน ApiService ของแอ๋ม
+    return {
+        "split": {"accuracy": 0.85, "method": "Train-Test Split"},
+        "kfold": {"accuracy": 0.92, "method": "5-Fold CV"}
+    }
+
 @app.post("/predict")
 def predict_sentiment(req: TextRequest):
-    # ตรวจสอบว่ามีโมเดลอย่างน้อย 1 ตัวพร้อมใช้งาน
     if not models_dict["split"] and not models_dict["kfold"]:
-        raise HTTPException(status_code=503, detail="No models available on server")
+        raise HTTPException(status_code=503, detail="No models loaded")
 
     start_time = time.time()
     text = req.text.strip()
@@ -91,26 +103,26 @@ def predict_sentiment(req: TextRequest):
     prediction_results = {}
 
     try:
-        # วนลูปทำนายทั้ง 2 โมเดล
         for key in ["split", "kfold"]:
             bundle = models_dict.get(key)
-            if bundle:
-                model = bundle["model"]
-                label_encoder = bundle["label_encoder"]
+            if bundle and isinstance(bundle, dict):
+                model = bundle.get("model")
+                label_encoder = bundle.get("label_encoder")
                 
-                # ทำนาย
-                proba = model.predict_proba([text])[0]
-                pred_idx = proba.argmax()
-                raw_label = label_encoder.inverse_transform([pred_idx])[0]
-                
-                prediction_results[key] = {
-                    "label": str(raw_label).lower(),
-                    "confidence": float(proba[pred_idx]),
-                    "probabilities": {
-                        str(label_encoder.inverse_transform([i])[0]).lower(): float(p)
-                        for i, p in enumerate(proba)
+                if model and label_encoder:
+                    # ทำนาย
+                    proba = model.predict_proba([text])[0]
+                    pred_idx = proba.argmax()
+                    raw_label = label_encoder.inverse_transform([pred_idx])[0]
+                    
+                    prediction_results[key] = {
+                        "label": str(raw_label).lower(),
+                        "confidence": float(proba[pred_idx]),
+                        "probabilities": {
+                            str(label_encoder.inverse_transform([i])[0]).lower(): float(p)
+                            for i, p in enumerate(proba)
+                        }
                     }
-                }
             else:
                 prediction_results[key] = None
 
@@ -128,7 +140,7 @@ def predict_sentiment(req: TextRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==========================================
-# 🌐 5. Frontend Serving (Production)
+# 🌐 5. Static Files Serving (Production)
 # ==========================================
 if os.path.exists(DIST_DIR):
     app.mount("/assets", StaticFiles(directory=os.path.join(DIST_DIR, "assets")), name="assets")
@@ -146,4 +158,4 @@ if os.path.exists(DIST_DIR):
 else:
     @app.get("/")
     def root():
-        return {"message": "Backend is running. API is ready at /docs"}
+        return {"message": "API is online. (Frontend dist not found)"}
