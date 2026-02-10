@@ -9,38 +9,45 @@ import time
 import numpy as np
 
 # ==========================================
-# 📂 1. Setup Paths (สำคัญมากสำหรับ Render)
+# 📂 1. Setup Paths
 # ==========================================
-# หาที่อยู่ปัจจุบันของไฟล์ main.py
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# ชี้ไปที่โฟลเดอร์ dist (Frontend ที่ Build แล้ว)
 DIST_DIR = os.path.join(BASE_DIR, "dist")
-# ชี้ไปที่ไฟล์ Model (แก้ path ให้ชัวร์)
-MODEL_PATH = os.path.join(BASE_DIR, "model", "sentiment_model_v1.joblib")
+
+# Path สำหรับโมเดลทั้ง 2 ตัว (เช็คชื่อไฟล์ใน GitHub ให้ตรงกันนะ)
+MODEL_PATH_SPLIT = os.path.join(BASE_DIR, "model", "sentiment_model_split.joblib")
+MODEL_PATH_KFOLD = os.path.join(BASE_DIR, "model", "sentiment_model_kfold.joblib")
 
 # ==========================================
-# 🤖 2. Load Model
+# 🤖 2. Load Models (Dual Loading)
 # ==========================================
-model = None
-label_encoder = None
+models_dict = {}
 
-try:
-    print(f"📂 Loading model from: {MODEL_PATH}")
-    bundle = joblib.load(MODEL_PATH)
-    model = bundle["model"]
-    label_encoder = bundle["label_encoder"]
-    print("✅ Model loaded successfully!")
-except Exception as e:
-    print(f"❌ Failed to load model: {e}")
-    # หมายเหตุ: บน Render ถ้าโหลดโมเดลไม่ได้ App อาจจะยังรันได้แต่ Predict ไม่ได้
+def load_bundle(path, name):
+    try:
+        print(f"📂 Loading {name} from: {path}")
+        if os.path.exists(path):
+            bundle = joblib.load(path)
+            print(f"✅ {name} loaded successfully!")
+            return bundle
+        else:
+            print(f"⚠️ {name} file not found at {path}")
+            return None
+    except Exception as e:
+        print(f"❌ Failed to load {name}: {e}")
+        return None
+
+# โหลดเก็บไว้ใน Dictionary
+models_dict["split"] = load_bundle(MODEL_PATH_SPLIT, "Split Model")
+models_dict["kfold"] = load_bundle(MODEL_PATH_KFOLD, "K-Fold Model")
 
 # ==========================================
-# 🚀 3. App & CORS
+# 🚀 3. App & CORS Setup
 # ==========================================
 app = FastAPI(
-    title="Thai Sentiment Insights API",
-    version="1.0.0",
-    description="Hybrid Server: Serving React Frontend + Python Backend"
+    title="Thai Sentiment Dual-Model API",
+    version="2.0.0",
+    description="Comparative Analysis: Split vs K-Fold Models"
 )
 
 app.add_middleware(
@@ -51,41 +58,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------- Schemas ----------
 class TextRequest(BaseModel):
     text: str
 
 # ==========================================
-# 🔌 4. API Routes (Backend Logic)
+# 🔌 4. API Routes
 # ==========================================
 
-@app.get("/api/health")  # เปลี่ยนเป็น /api/health เพื่อไม่ให้ชนกับ Frontend
+@app.get("/api/health")
 def health():
     return {
-        "status": "healthy" if model else "unhealthy",
-        "model_loaded": model is not None,
+        "status": "online",
+        "models": {
+            "split": models_dict["split"] is not None,
+            "kfold": models_dict["kfold"] is not None
+        },
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")
-    }
-
-@app.get("/model/info")
-def model_info():
-    if not model:
-        raise HTTPException(status_code=503, detail="Model not loaded")
-    
-    return {
-        "model_name": "Thai Sentiment Classifier",
-        "version": "1.0.0",
-        "classifier_type": type(model).__name__,
-        "num_classes": len(label_encoder.classes_),
-        "labels": [str(l).lower() for l in label_encoder.classes_],
-        "accuracy": 0.995, # อัปเดตตามจริง
-        "f1_score": 0.992
     }
 
 @app.post("/predict")
 def predict_sentiment(req: TextRequest):
-    if not model or not label_encoder:
-        raise HTTPException(status_code=503, detail="Model is not available")
+    # ตรวจสอบว่ามีโมเดลอย่างน้อย 1 ตัวพร้อมใช้งาน
+    if not models_dict["split"] and not models_dict["kfold"]:
+        raise HTTPException(status_code=503, detail="No models available on server")
 
     start_time = time.time()
     text = req.text.strip()
@@ -93,26 +88,39 @@ def predict_sentiment(req: TextRequest):
     if not text:
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
-    try:
-        proba = model.predict_proba([text])[0]
-        pred_idx = proba.argmax()
-        raw_label = label_encoder.inverse_transform([pred_idx])[0]
-        label = str(raw_label).lower() 
-        confidence = float(proba[pred_idx])
+    prediction_results = {}
 
-        probabilities = {
-            str(label_encoder.inverse_transform([i])[0]).lower(): float(p)
-            for i, p in enumerate(proba)
-        }
+    try:
+        # วนลูปทำนายทั้ง 2 โมเดล
+        for key in ["split", "kfold"]:
+            bundle = models_dict.get(key)
+            if bundle:
+                model = bundle["model"]
+                label_encoder = bundle["label_encoder"]
+                
+                # ทำนาย
+                proba = model.predict_proba([text])[0]
+                pred_idx = proba.argmax()
+                raw_label = label_encoder.inverse_transform([pred_idx])[0]
+                
+                prediction_results[key] = {
+                    "label": str(raw_label).lower(),
+                    "confidence": float(proba[pred_idx]),
+                    "probabilities": {
+                        str(label_encoder.inverse_transform([i])[0]).lower(): float(p)
+                        for i, p in enumerate(proba)
+                    }
+                }
+            else:
+                prediction_results[key] = None
 
         latency_ms = (time.time() - start_time) * 1000
 
         return {
-            "label": label,
-            "confidence": confidence,
-            "probabilities": probabilities,
+            "results": prediction_results,
             "latency_ms": latency_ms,
-            "preprocessed_text": text
+            "preprocessed_text": text,
+            "compare_mode": True
         }
 
     except Exception as e:
@@ -120,32 +128,22 @@ def predict_sentiment(req: TextRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==========================================
-# 🌐 5. Frontend Serving (ส่วนที่เพิ่มเข้ามา)
+# 🌐 5. Frontend Serving (Production)
 # ==========================================
-
-# ตรวจสอบว่ามีโฟลเดอร์ dist ไหม
 if os.path.exists(DIST_DIR):
-    # 1. Mount Assets (CSS, JS, Images)
-    # React จะเรียกไฟล์พวกนี้ผ่าน /assets/...
     app.mount("/assets", StaticFiles(directory=os.path.join(DIST_DIR, "assets")), name="assets")
 
-    # 2. Serve index.html ที่ Root (/)
     @app.get("/")
     async def serve_spa():
         return FileResponse(os.path.join(DIST_DIR, "index.html"))
 
-    # 3. Catch-All Route (สำหรับ React Router)
-    # ถ้า User กด Refresh หน้า /about หรือ /result ระบบจะส่ง index.html ให้ React จัดการต่อ
     @app.get("/{full_path:path}")
     async def catch_all(full_path: str):
         file_path = os.path.join(DIST_DIR, full_path)
-        # ถ้าไฟล์มีอยู่จริง (เช่น favicon.ico) ให้ส่งไฟล์นั้น
         if os.path.exists(file_path):
             return FileResponse(file_path)
-        # ถ้าไม่เจอไฟล์ ให้ส่ง index.html (SPA Fallback)
         return FileResponse(os.path.join(DIST_DIR, "index.html"))
 else:
-    print("⚠️ WARNING: 'dist' folder not found! Frontend will not be served.")
     @app.get("/")
     def root():
-        return {"message": "Backend is running, but Frontend (dist) is missing."}
+        return {"message": "Backend is running. API is ready at /docs"}
