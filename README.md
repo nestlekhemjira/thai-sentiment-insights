@@ -1,73 +1,56 @@
-# Welcome to your Lovable project
+🍜 Thai Sentiment Analysis: Split vs K-Fold Comparison
+โปรเจกต์วิเคราะห์ความรู้สึกจากรีวิวอาหาร (ภาษาไทย) โดยเปรียบเทียบประสิทธิภาพระหว่างการใช้ Model แบบ Train-Test Split และ 5-Fold Cross-Validation
 
-## Project info
+📂 โครงสร้างโปรเจกต์ (Monorepo)
+/ (Root) -> ไฟล์ README และการตั้งค่าสำหรับ Deploy
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+/backend -> API (FastAPI) และโฟลเดอร์ model/ สำหรับเก็บไฟล์ .joblib
 
-## How can I edit this code?
+/frontend -> Dashboard (React + Vite) สำหรับแสดงผลเปรียบเทียบ
 
-There are several ways of editing your application.
+🚀 วิธีการรันบนเครื่อง Local
+1. รัน Backend
 
-**Use Lovable**
+เข้าไปที่โฟลเดอร์ backend: cd backend
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+ติดตั้ง Library: pip install -r requirements.txt
 
-Changes made via Lovable will be committed automatically to this repo.
+สั่งรัน Server: uvicorn main:app --reload
+API จะรันที่ http://localhost:8000 และดู Docs ได้ที่ /docs
 
-**Use your preferred IDE**
+2. รัน Frontend
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+เข้าไปที่โฟลเดอร์ frontend: cd frontend
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+ติดตั้ง Package: npm install
 
-Follow these steps:
+สั่งรันหน้าเว็บ: npm run dev
+หน้าเว็บจะรันที่ http://localhost:5173
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+☁️ วิธีการ Deploy บน Render.com (Web Service)
+1. การตั้งค่า Build & Start
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+Runtime: Python 3
 
-# Step 3: Install the necessary dependencies.
-npm i
+Build Command:
+# 1. ติดตั้ง dependencies ของ Backend
+pip install -r backend/requirements.txt
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
+# 2. ไปที่โฟลเดอร์ frontend เพื่อ build หน้าเว็บ
+cd frontend && npm install && npm run build
 
-**Edit a file directly in GitHub**
+# 3. ย้ายโฟลเดอร์ dist มาไว้ใน backend เพื่อให้ FastAPI เรียกใช้ได้
+cp -r dist ../backend/
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+Bash
+# ติดตั้ง dependencies สำหรับ backend
+pip install -r backend/requirements.txt
+# build frontend และย้ายไฟล์ไปไว้ที่ backend/dist เพื่อให้ FastAPI เสิร์ฟไฟล์ได้
+cd frontend && npm install && npm run build && cp -r dist ../backend/
+Start Command:
 
-**Use GitHub Codespaces**
+Bash
+uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+2. Environment Variables
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+SCIKIT_LEARN_VERSION: 1.6.1 (เพื่อให้ตรงกับตอนเทรนโมเดล)
