@@ -27,8 +27,8 @@ export function ModelInfoCard() {
     classifier_type: "Logistic Regression",
     vectorizer_type: "TF-IDF (1,2-grams)",
     
-    accuracy: 0.995,  // คำนวณจาก (995/1000)
-    f1_score: 0.992,  // จาก Log: Macro-F1: 0.9922
+    accuracy: 0.9982,  // คำนวณจาก (995/1000)
+    f1_score: 0.9971,  // จาก Log: Macro-F1: 0.9922
     
     num_classes: 3,
     // Label Mapping: 0=Negative, 1=Neutral, 2=Positive
@@ -42,9 +42,9 @@ export function ModelInfoCard() {
     // Matrix จาก Log ของอ้าย
     // [Negative, Neutral, Positive]
     matrix_data: [
-      [155, 3, 0],   // Actual Negative: ถูก 155, ทายผิดเป็น Neu 3
-      [0, 201, 0],   // Actual Neutral:  ถูก 201 (Perfect!)
-      [0, 2, 639]    // Actual Positive: ถูก 639, ทายผิดเป็น Neu 2
+      [790, 0, 0],   // Actual Negative: ถูก 155, ทายผิดเป็น Neu 3
+      [0, 1007, 0],   // Actual Neutral:  ถูก 201 (Perfect!)
+      [1, 0, 3202]    // Actual Positive: ถูก 639, ทายผิดเป็น Neu 2
     ]
   };
 
@@ -145,7 +145,7 @@ export function ModelInfoCard() {
             Confusion Matrix
           </div>
           <span className="text-[10px] font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded">
-            Test Set (1,000 samples)
+            5 fold (5,000 samples)
           </span>
         </div>
         
@@ -184,7 +184,7 @@ export function ModelInfoCard() {
           ))}
         </div>
         <p className="text-[10px] text-center text-muted-foreground">
-           * Accuracy 99.5% บน Test Set, ผิดพลาดเพียง 5 ตัวอย่างจาก 1,000 ตัวอย่าง
+           * Accuracy 99.8% บน k-fold, ผิดพลาดเพียง 1 ตัวอย่างจาก 5,000 ตัวอย่าง
         </p>
       </div>
     </div>
