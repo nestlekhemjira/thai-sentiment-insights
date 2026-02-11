@@ -49,7 +49,7 @@ app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="static")
 
 ใน backend/requirements.txt ต้องระบุเวอร์ชันให้ตรงกับที่ใช้เซฟโมเดล
 
-แนะนำ: scikit-learn==1.4.2
+แนะนำ: scikit-learn==1.8.0
 
 5. วิธีการตรวจสอบผลงาน
 
